@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>마크다운 칸반</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --border: #2a2f3a;
+    --text: #e6e8ee;
+    --muted: #8b93a5;
+    --accent: #5b8cff;
+    --high: #ff5c72;
+    --med: #ffb454;
+    --low: #4fd1a5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  header {
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  button, input, select {
+    font-family: inherit;
+    font-size: 13px;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 12px;
+  }
+  button { cursor: pointer; transition: background .15s; }
+  button:hover { background: #262b36; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  button.primary:hover { background: #4a7bef; }
+  .filters { padding: 14px 28px; display: flex; gap: 10px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+  .add-form {
+    padding: 16px 28px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .add-form input[type=text] { flex: 1; min-width: 160px; }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    padding: 20px 28px;
+  }
+  .column {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+  }
+  .column-header {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    font-size: 14px;
+    display: flex;
+    justify-content: space-between;
+    color: var(--muted);
+  }
+  .column-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 60px; }
+  .column-body.drag-over { background: rgba(91,140,255,0.08); border-radius: 8px; }
+  .card {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--muted);
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: grab;
+    font-size: 13px;
+  }
+  .card.priority-High { border-left-color: var(--high); }
+  .card.priority-Medium { border-left-color: var(--med); }
+  .card.priority-Low { border-left-color: var(--low); }
+  .card-title { margin-bottom: 6px; line-height: 1.4; }
+  .card-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .tag {
+    background: rgba(91,140,255,0.15);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+  }
+  .prio-badge { font-size: 11px; color: var(--muted); }
+  .card-actions { margin-top: 8px; display: flex; gap: 6px; }
+  .card-actions button { padding: 3px 8px; font-size: 11px; }
+  .empty-hint { color: var(--muted); font-size: 12px; padding: 20px; text-align: center; }
+  @media (max-width: 800px) {
+    .board { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📋 마크다운 칸반</h1>
+  <div class="toolbar">
+    <button id="exportBtn">↓ 마크다운 내보내기</button>
+    <label for="importFile" style="cursor:pointer;">
+      <button type="button" onclick="document.getElementById('importFile').click()">↑ 마크다운 가져오기</button>
+    </label>
+    <input type="file" id="importFile" accept=".md,.markdown,text/markdown" style="display:none;">
+  </div>
+</header>
+
+<div class="filters">
+  <select id="tagFilter"><option value="">전체 태그</option></select>
+  <select id="prioFilter">
+    <option value="">전체 우선순위</option>
+    <option value="High">높음</option>
+    <option value="Medium">중간</option>
+    <option value="Low">낮음</option>
+  </select>
+</div>
+
+<form class="add-form" id="addForm">
+  <input type="text" id="titleInput" placeholder="할 일 입력..." required>
+  <input type="text" id="tagInput" placeholder="태그 (쉼표로 구분)">
+  <select id="prioInput">
+    <option value="Medium">중간</option>
+    <option value="High">높음</option>
+    <option value="Low">낮음</option>
+  </select>
+  <button type="submit" class="primary">+ 추가</button>
+</form>
+
+<div class="board" id="board">
+  <div class="column" data-status="todo">
+    <div class="column-header"><span>할 일</span><span id="count-todo">0</span></div>
+    <div class="column-body" data-status="todo"></div>
+  </div>
+  <div class="column" data-status="doing">
+    <div class="column-header"><span>진행 중</span><span id="count-doing">0</span></div>
+    <div class="column-body" data-status="doing"></div>
+  </div>
+  <div class="column" data-status="done">
+    <div class="column-header"><span>완료</span><span id="count-done">0</span></div>
+    <div class="column-body" data-status="done"></div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'md-kanban-tasks';
+const PRIO_LABEL = { High: '높음', Medium: '중간', Low: '낮음' };
+const STATUS_LABEL = { todo: '할 일', doing: '진행 중', done: '완료' };
+
+let tasks = load();
+let filterTag = '';
+let filterPrio = '';
+
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 9); }
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : seedTasks();
+  } catch { return seedTasks(); }
+}
+
+function seedTasks() {
+  return [
+    { id: uid(), title: '프로젝트 아이디어 정리', tags: ['기획'], priority: 'Medium', status: 'todo' },
+    { id: uid(), title: '칸반 보드 만들기', tags: ['개발','오늘'], priority: 'High', status: 'doing' },
+    { id: uid(), title: '카드 드래그 앤 드롭 구현', tags: ['개발'], priority: 'Low', status: 'done' },
+  ];
+}
+
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)); } catch { /* storage unavailable */ }
+}
+
+function allTags() {
+  const s = new Set();
+  tasks.forEach(t => t.tags.forEach(tag => s.add(tag)));
+  return [...s].sort();
+}
+
+function render() {
+  const tagSel = document.getElementById('tagFilter');
+  const currentTagVal = filterTag;
+  tagSel.innerHTML = '<option value="">전체 태그</option>' +
+    allTags().map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+  tagSel.value = currentTagVal;
+
+  ['todo','doing','done'].forEach(status => {
+    const body = document.querySelector(`.column-body[data-status="${status}"]`);
+    const filtered = tasks.filter(t => t.status === status)
+      .filter(t => !filterTag || t.tags.includes(filterTag))
+      .filter(t => !filterPrio || t.priority === filterPrio);
+    document.getElementById(`count-${status}`).textContent = filtered.length;
+    body.innerHTML = filtered.length ? '' : '<div class="empty-hint">카드가 없습니다</div>';
+    filtered.forEach(t => body.appendChild(renderCard(t)));
+  });
+}
+
+function renderCard(t) {
+  const div = document.createElement('div');
+  div.className = `card priority-${t.priority}`;
+  div.draggable = true;
+  div.dataset.id = t.id;
+  div.innerHTML = `
+    <div class="card-title">${escapeHtml(t.title)}</div>
+    <div class="card-meta">
+      <span class="prio-badge">${PRIO_LABEL[t.priority]}</span>
+      ${t.tags.map(tag => `<span class="tag">#${escapeHtml(tag)}</span>`).join('')}
+    </div>
+    <div class="card-actions">
+      <button data-action="delete">삭제</button>
+    </div>
+  `;
+  div.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('text/plain', t.id);
+    setTimeout(() => div.style.opacity = '0.4', 0);
+  });
+  div.addEventListener('dragend', () => div.style.opacity = '1');
+  div.querySelector('[data-action="delete"]').addEventListener('click', () => {
+    tasks = tasks.filter(x => x.id !== t.id);
+    save(); render();
+  });
+  return div;
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+document.querySelectorAll('.column-body').forEach(body => {
+  body.addEventListener('dragover', e => { e.preventDefault(); body.classList.add('drag-over'); });
+  body.addEventListener('dragleave', () => body.classList.remove('drag-over'));
+  body.addEventListener('drop', e => {
+    e.preventDefault();
+    body.classList.remove('drag-over');
+    const id = e.dataTransfer.getData('text/plain');
+    const task = tasks.find(t => t.id === id);
+    if (task) { task.status = body.dataset.status; save(); render(); }
+  });
+});
+
+document.getElementById('addForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const title = document.getElementById('titleInput').value.trim();
+  if (!title) return;
+  const tags = document.getElementById('tagInput').value
+    .split(',').map(s => s.trim()).filter(Boolean);
+  const priority = document.getElementById('prioInput').value;
+  tasks.push({ id: uid(), title, tags, priority, status: 'todo' });
+  save(); render();
+  e.target.reset();
+  document.getElementById('titleInput').focus();
+});
+
+document.getElementById('tagFilter').addEventListener('change', e => { filterTag = e.target.value; render(); });
+document.getElementById('prioFilter').addEventListener('change', e => { filterPrio = e.target.value; render(); });
+
+document.getElementById('exportBtn').addEventListener('click', () => {
+  let md = '';
+  ['todo','doing','done'].forEach(status => {
+    md += `## ${STATUS_LABEL[status]}\n\n`;
+    tasks.filter(t => t.status === status).forEach(t => {
+      const box = status === 'done' ? '[x]' : '[ ]';
+      const tagsStr = t.tags.map(tag => `#${tag}`).join(' ');
+      md += `- ${box} ${t.title}${tagsStr ? ' ' + tagsStr : ''} (priority: ${t.priority})\n`;
+    });
+    md += '\n';
+  });
+  const blob = new Blob([md], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'kanban-export.md';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('importFile').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    tasks = parseMarkdown(reader.result);
+    save(); render();
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+function parseMarkdown(text) {
+  const lines = text.split('\n');
+  const statusMap = { '할 일': 'todo', '진행 중': 'doing', '완료': 'done' };
+  let currentStatus = 'todo';
+  const result = [];
+  for (const line of lines) {
+    const headerMatch = line.match(/^##\s+(.+)$/);
+    if (headerMatch && statusMap[headerMatch[1].trim()]) {
+      currentStatus = statusMap[headerMatch[1].trim()];
+      continue;
+    }
+    const itemMatch = line.match(/^-\s*\[( |x|X)\]\s*(.+)$/);
+    if (itemMatch) {
+      const checked = itemMatch[1].toLowerCase() === 'x';
+      let rest = itemMatch[2];
+      let priority = 'Medium';
+      const prioMatch = rest.match(/\(priority:\s*(High|Medium|Low)\)/i);
+      if (prioMatch) {
+        priority = prioMatch[1][0].toUpperCase() + prioMatch[1].slice(1).toLowerCase();
+        rest = rest.replace(prioMatch[0], '').trim();
+      }
+      const tags = [...rest.matchAll(/#(\S+)/g)].map(m => m[1]);
+      const title = rest.replace(/#(\S+)/g, '').trim();
+      result.push({
+        id: uid(),
+        title,
+        tags,
+        priority,
+        status: checked ? 'done' : currentStatus,
+      });
+    }
+  }
+  return result.length ? result : tasks;
+}
+
+render();
+</script>
+</body>
+</html>

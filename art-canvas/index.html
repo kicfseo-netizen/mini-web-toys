@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>제너레이티브 아트 캔버스</title>
+<style>
+  :root {
+    --bg: #0a0b0f;
+    --panel: #14161d;
+    --border: #262a35;
+    --text: #e6e8ee;
+    --muted: #8b93a5;
+    --accent: #7c5cff;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    overflow: hidden;
+  }
+  #app { position: relative; width: 100vw; height: 100vh; }
+  canvas { display: block; position: absolute; top: 0; left: 0; touch-action: none; cursor: crosshair; }
+  .panel {
+    position: absolute; top: 16px; left: 16px;
+    background: rgba(20,22,29,0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 10px;
+    z-index: 10;
+    min-width: 220px;
+  }
+  .panel h1 { font-size: 14px; margin: 0 0 4px; font-weight: 600; }
+  .modes { display: flex; gap: 6px; flex-wrap: wrap; }
+  .modes button {
+    flex: 1; min-width: 70px;
+    background: #1c1f29; color: var(--text);
+    border: 1px solid var(--border); border-radius: 7px;
+    padding: 7px 8px; font-size: 12px; cursor: pointer;
+  }
+  .modes button.active { background: var(--accent); border-color: var(--accent); color: white; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+  input[type=range] { width: 110px; accent-color: var(--accent); }
+  .actions { display: flex; gap: 6px; margin-top: 4px; }
+  .actions button {
+    flex: 1; background: #1c1f29; color: var(--text);
+    border: 1px solid var(--border); border-radius: 7px;
+    padding: 7px; font-size: 12px; cursor: pointer;
+  }
+  .actions button:hover { background: #262b36; }
+  .palette { display: flex; gap: 6px; }
+  .swatch {
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 2px solid transparent; cursor: pointer;
+  }
+  .swatch.active { border-color: white; }
+  .hint {
+    position: absolute; bottom: 16px; left: 16px;
+    color: var(--muted); font-size: 11px;
+    background: rgba(20,22,29,0.7); padding: 6px 10px; border-radius: 8px;
+    z-index: 10;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="canvas"></canvas>
+  <div class="panel">
+    <h1>✨ 제너레이티브 아트</h1>
+    <div class="modes">
+      <button data-mode="particles" class="active">파티클</button>
+      <button data-mode="flow">플로우필드</button>
+      <button data-mode="fractal">프랙탈 나무</button>
+    </div>
+    <div class="row"><span>크기/강도</span><input type="range" id="intensity" min="1" max="100" value="40"></div>
+    <div class="row"><span>팔레트</span>
+      <div class="palette">
+        <div class="swatch active" style="background:#7c5cff" data-p="0"></div>
+        <div class="swatch" style="background:#ff5c8a" data-p="1"></div>
+        <div class="swatch" style="background:#4fd1a5" data-p="2"></div>
+        <div class="swatch" style="background:#ffb454" data-p="3"></div>
+        <div class="swatch" style="background:#5bc9ff" data-p="4"></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="clearBtn">지우기</button>
+      <button id="saveBtn">PNG 저장</button>
+    </div>
+  </div>
+  <div class="hint">마우스로 클릭/드래그하세요 · 모바일은 터치 지원</div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', () => {
+  const prev = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  resize();
+  ctx.putImageData(prev, 0, 0);
+});
+
+const palettes = [
+  ['#7c5cff', '#a78bfa', '#c4b5fd'],
+  ['#ff5c8a', '#ff8fab', '#ffb3c6'],
+  ['#4fd1a5', '#7ee8c0', '#a7f3d9'],
+  ['#ffb454', '#ffd08a', '#ffe4b8'],
+  ['#5bc9ff', '#8fdcff', '#bceeff'],
+];
+let paletteIdx = 0;
+let mode = 'particles';
+let intensity = 40;
+
+document.querySelectorAll('.modes button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.modes button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    mode = btn.dataset.mode;
+  });
+});
+document.querySelectorAll('.swatch').forEach(sw => {
+  sw.addEventListener('click', () => {
+    document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+    sw.classList.add('active');
+    paletteIdx = +sw.dataset.p;
+  });
+});
+document.getElementById('intensity').addEventListener('input', e => intensity = +e.target.value);
+document.getElementById('clearBtn').addEventListener('click', () => ctx.clearRect(0, 0, W, H));
+document.getElementById('saveBtn').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.download = 'art.png';
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+});
+
+// ---------- Pointer tracking ----------
+let pointer = { x: W / 2, y: H / 2, down: false, px: W / 2, py: H / 2 };
+function setPointer(x, y) {
+  pointer.px = pointer.x; pointer.py = pointer.y;
+  pointer.x = x; pointer.y = y;
+}
+canvas.addEventListener('pointerdown', e => { pointer.down = true; setPointer(e.clientX, e.clientY); });
+window.addEventListener('pointerup', () => pointer.down = false);
+canvas.addEventListener('pointermove', e => setPointer(e.clientX, e.clientY));
+canvas.addEventListener('pointerleave', () => {});
+
+// ---------- Particles mode ----------
+let particles = [];
+function spawnParticles(x, y, n) {
+  const colors = palettes[paletteIdx];
+  for (let i = 0; i < n; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 3 + 0.5;
+    particles.push({
+      x, y,
+      vx: Math.cos(ang) * speed,
+      vy: Math.sin(ang) * speed,
+      life: 1,
+      size: Math.random() * (intensity / 10) + 1,
+      color: colors[Math.floor(Math.random() * colors.length)],
+    });
+  }
+  if (particles.length > 4000) particles.splice(0, particles.length - 4000);
+}
+function stepParticles() {
+  ctx.fillStyle = 'rgba(10,11,15,0.08)';
+  ctx.fillRect(0, 0, W, H);
+  if (pointer.down) spawnParticles(pointer.x, pointer.y, Math.ceil(intensity / 8));
+  particles.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.02;
+    p.life -= 0.012;
+    ctx.globalAlpha = Math.max(p.life, 0);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+  particles = particles.filter(p => p.life > 0);
+}
+
+// ---------- Flow field mode ----------
+let flowParticles = [];
+const cell = 24;
+function initFlow() {
+  flowParticles = [];
+  for (let i = 0; i < 600; i++) {
+    flowParticles.push({ x: Math.random() * W, y: Math.random() * H, life: Math.random() * 200 });
+  }
+}
+function fieldAngle(x, y, t) {
+  const nx = x / 220, ny = y / 220;
+  let a = Math.sin(nx * 2 + t) + Math.cos(ny * 2 - t) + Math.sin((nx + ny) * 1.5 + t * 0.7);
+  const dx = x - pointer.x, dy = y - pointer.y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  if (d < 220) a += (Math.atan2(dy, dx)) * (1 - d / 220) * 2;
+  return a;
+}
+let flowT = 0;
+function stepFlow() {
+  ctx.fillStyle = 'rgba(10,11,15,0.05)';
+  ctx.fillRect(0, 0, W, H);
+  flowT += 0.003;
+  const colors = palettes[paletteIdx];
+  ctx.lineWidth = Math.max(intensity / 30, 0.5);
+  flowParticles.forEach(p => {
+    const a = fieldAngle(p.x, p.y, flowT);
+    const nx = p.x + Math.cos(a) * 2.2;
+    const ny = p.y + Math.sin(a) * 2.2;
+    ctx.strokeStyle = colors[Math.floor((p.x + p.y) / 80) % colors.length];
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(nx, ny);
+    ctx.stroke();
+    p.x = nx; p.y = ny;
+    p.life -= 1;
+    if (p.life <= 0 || p.x < 0 || p.x > W || p.y < 0 || p.y > H) {
+      p.x = Math.random() * W; p.y = Math.random() * H; p.life = 100 + Math.random() * 150;
+    }
+  });
+  ctx.globalAlpha = 1;
+}
+
+// ---------- Fractal tree mode ----------
+let trees = [];
+function growTree(x, y) {
+  trees.push({ x, y, t: 0, seed: Math.random() * 1000, done: false });
+  if (trees.length > 6) trees.shift();
+}
+function drawBranch(x, y, len, angle, depth, growT, colors, baseHue) {
+  if (depth === 0 || len < 2) return;
+  const progress = Math.min(Math.max(growT - depth * 0.06, 0) * 4, 1);
+  if (progress <= 0) return;
+  const x2 = x + Math.cos(angle) * len * progress;
+  const y2 = y + Math.sin(angle) * len * progress;
+  ctx.strokeStyle = colors[depth % colors.length];
+  ctx.lineWidth = Math.max(depth * 0.6, 0.6);
+  ctx.globalAlpha = 0.85;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  if (progress >= 1) {
+    const spread = 0.35 + (intensity / 300);
+    drawBranch(x2, y2, len * 0.78, angle - spread, depth - 1, growT, colors, baseHue);
+    drawBranch(x2, y2, len * 0.78, angle + spread, depth - 1, growT, colors, baseHue);
+  }
+}
+function stepFractal() {
+  ctx.fillStyle = 'rgba(10,11,15,0.04)';
+  ctx.fillRect(0, 0, W, H);
+  const colors = palettes[paletteIdx];
+  trees.forEach(tr => {
+    tr.t += 0.02;
+    drawBranch(tr.x, tr.y, 90, -Math.PI / 2, 9, tr.t, colors);
+  });
+  ctx.globalAlpha = 1;
+}
+canvas.addEventListener('pointerdown', e => {
+  if (mode === 'fractal') growTree(e.clientX, e.clientY);
+});
+
+// ---------- Main loop ----------
+function loop() {
+  if (mode === 'particles') stepParticles();
+  else if (mode === 'flow') stepFlow();
+  else if (mode === 'fractal') stepFractal();
+  requestAnimationFrame(loop);
+}
+initFlow();
+ctx.fillStyle = '#0a0b0f';
+ctx.fillRect(0, 0, W, H);
+loop();
+</script>
+</body>
+</html>

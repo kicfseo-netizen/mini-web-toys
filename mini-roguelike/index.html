@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>미니 로그라이크</title>
+<style>
+  :root {
+    --bg: #08090c;
+    --panel: #14161d;
+    --border: #262a35;
+    --text: #e6e8ee;
+    --muted: #8b93a5;
+    --accent: #ff5c72;
+    --hp: #4fd1a5;
+    --hp-low: #ff5c72;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  #wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  #hud {
+    display: flex; gap: 18px; align-items: center;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 18px; font-size: 13px;
+  }
+  .hud-item { display: flex; align-items: center; gap: 6px; }
+  .hpbar { width: 140px; height: 12px; background: #1c1f29; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+  .hpbar-fill { height: 100%; background: var(--hp); transition: width .15s; }
+  #gameCanvas { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; image-rendering: pixelated; }
+  #log {
+    width: 100%; max-width: 700px; height: 64px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; font-size: 12px; color: var(--muted);
+    overflow-y: auto; line-height: 1.6;
+  }
+  #log .msg-new { color: var(--text); }
+  #controls-hint { color: var(--muted); font-size: 12px; }
+  #overlay {
+    position: fixed; inset: 0; background: rgba(8,9,12,0.9);
+    display: none; align-items: center; justify-content: center; flex-direction: column; gap: 14px;
+    z-index: 20;
+  }
+  #overlay.show { display: flex; }
+  #overlay h2 { font-size: 26px; margin: 0; color: var(--accent); }
+  #overlay button {
+    background: var(--accent); color: white; border: none; border-radius: 8px;
+    padding: 10px 22px; font-size: 14px; cursor: pointer;
+  }
+  .dpad { display: none; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); gap: 4px; margin-top: 4px; }
+  .dpad button { background: #1c1f29; border: 1px solid var(--border); color: var(--text); border-radius: 8px; font-size: 16px; }
+  @media (pointer: coarse) { .dpad { display: grid; } }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <div class="hud-item">❤️ <div class="hpbar"><div class="hpbar-fill" id="hpFill"></div></div> <span id="hpText"></span></div>
+    <div class="hud-item">🏰 <span id="floorText"></span></div>
+    <div class="hud-item">⭐ <span id="levelText"></span></div>
+    <div class="hud-item">⏱ <span id="turnText"></span></div>
+  </div>
+  <canvas id="gameCanvas"></canvas>
+  <div id="log"></div>
+  <div id="controls-hint">방향키 또는 WASD로 이동 · 적에게 이동하면 공격 · 계단(&gt;)으로 다음 층 이동</div>
+  <div class="dpad">
+    <span></span><button data-dx="0" data-dy="-1">↑</button><span></span>
+    <button data-dx="-1" data-dy="0">←</button><span></span><button data-dx="1" data-dy="0">→</button>
+    <span></span><button data-dx="0" data-dy="1">↓</button><span></span>
+  </div>
+</div>
+
+<div id="overlay">
+  <h2 id="overlayTitle">게임 오버</h2>
+  <div id="overlayStats" style="color: var(--muted); font-size: 13px;"></div>
+  <button id="restartBtn">다시 시작</button>
+</div>
+
+<script>
+const COLS = 38, ROWS = 24, CELL = 22;
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = COLS * CELL;
+canvas.height = ROWS * CELL;
+ctx.font = `${CELL - 4}px monospace`;
+ctx.textAlign = 'center';
+ctx.textBaseline = 'middle';
+
+const WALL = 0, FLOOR = 1;
+const ENEMY_TYPES = [
+  { ch: 'g', name: '고블린', color: '#8fd694', hp: 6, atk: [1, 3], xp: 3 },
+  { ch: 'o', name: '오크',   color: '#ff9d5c', hp: 11, atk: [2, 5], xp: 6 },
+  { ch: 'b', name: '박쥐',   color: '#c9a7ff', hp: 4, atk: [1, 2], xp: 2 },
+  { ch: 'r', name: '골렘',   color: '#ff5c72', hp: 18, atk: [3, 7], xp: 12 },
+];
+
+let state = null;
+
+function newGame() {
+  state = {
+    floor: 1,
+    turn: 0,
+    player: { x: 0, y: 0, hp: 20, maxHp: 20, atk: [2, 5], level: 1, xp: 0, xpNext: 10 },
+    grid: null,
+    rooms: [],
+    enemies: [],
+    items: [],
+    stairs: { x: 0, y: 0 },
+    visited: null,
+    messages: [],
+    over: false,
+  };
+  generateFloor();
+  log(`던전 ${state.floor}층에 입장했다.`);
+  render();
+  document.getElementById('overlay').classList.remove('show');
+}
+
+function generateFloor() {
+  const grid = Array.from({ length: ROWS }, () => Array(COLS).fill(WALL));
+  const rooms = [];
+  const maxRooms = 6 + Math.min(state.floor, 5);
+  for (let i = 0; i < maxRooms * 4 && rooms.length < maxRooms; i++) {
+    const w = rand(4, 8), h = rand(3, 6);
+    const x = rand(1, COLS - w - 2), y = rand(1, ROWS - h - 2);
+    const overlaps = rooms.some(r => x < r.x + r.w + 1 && x + w + 1 > r.x && y < r.y + r.h + 1 && y + h + 1 > r.y);
+    if (overlaps) continue;
+    for (let ry = y; ry < y + h; ry++) for (let rx = x; rx < x + w; rx++) grid[ry][rx] = FLOOR;
+    rooms.push({ x, y, w, h, cx: x + (w >> 1), cy: y + (h >> 1) });
+  }
+  for (let i = 1; i < rooms.length; i++) {
+    const a = rooms[i - 1], b = rooms[i];
+    if (Math.random() < 0.5) {
+      carveH(grid, a.cx, b.cx, a.cy);
+      carveV(grid, a.cy, b.cy, b.cx);
+    } else {
+      carveV(grid, a.cy, b.cy, a.cx);
+      carveH(grid, a.cx, b.cx, b.cy);
+    }
+  }
+
+  state.grid = grid;
+  state.rooms = rooms;
+  state.visited = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+
+  const start = rooms[0];
+  state.player.x = start.cx;
+  state.player.y = start.cy;
+
+  const last = rooms[rooms.length - 1];
+  state.stairs = { x: last.cx, y: last.cy };
+
+  state.enemies = [];
+  state.items = [];
+  rooms.slice(1).forEach(r => {
+    const enemyCount = rand(0, 2);
+    for (let i = 0; i < enemyCount; i++) {
+      const pos = randomFloorInRoom(r);
+      if (!pos) continue;
+      const tierMax = Math.min(1 + Math.floor(state.floor / 2), ENEMY_TYPES.length - 1);
+      const t = ENEMY_TYPES[rand(0, tierMax)];
+      state.enemies.push({
+        x: pos.x, y: pos.y, type: t,
+        hp: t.hp + state.floor * 2, maxHp: t.hp + state.floor * 2,
+      });
+    }
+    if (Math.random() < 0.35) {
+      const pos = randomFloorInRoom(r);
+      if (pos) state.items.push({ x: pos.x, y: pos.y, kind: 'potion' });
+    }
+  });
+}
+
+function randomFloorInRoom(r) {
+  for (let i = 0; i < 10; i++) {
+    const x = rand(r.x, r.x + r.w - 1), y = rand(r.y, r.y + r.h - 1);
+    if (!(x === state.player.x && y === state.player.y)) return { x, y };
+  }
+  return null;
+}
+function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function carveH(grid, x1, x2, y) { for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) grid[y][x] = FLOOR; }
+function carveV(grid, y1, y2, x) { for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) grid[y][x] = FLOOR; }
+
+function log(msg) {
+  state.messages.push(msg);
+  if (state.messages.length > 40) state.messages.shift();
+  const logEl = document.getElementById('log');
+  logEl.innerHTML = state.messages.slice(-8).map((m, i, arr) =>
+    `<div class="${i === arr.length - 1 ? 'msg-new' : ''}">${m}</div>`).join('');
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function enemyAt(x, y) { return state.enemies.find(e => e.x === x && e.y === y); }
+function itemAt(x, y) { return state.items.find(it => it.x === x && it.y === y); }
+
+function tryMove(dx, dy) {
+  if (state.over) return;
+  const p = state.player;
+  const nx = p.x + dx, ny = p.y + dy;
+  if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) return;
+  if (state.grid[ny][nx] === WALL) return;
+
+  const enemy = enemyAt(nx, ny);
+  if (enemy) {
+    playerAttack(enemy);
+  } else {
+    p.x = nx; p.y = ny;
+    const item = itemAt(nx, ny);
+    if (item) {
+      state.items = state.items.filter(it => it !== item);
+      const heal = rand(5, 10);
+      p.hp = Math.min(p.maxHp, p.hp + heal);
+      log(`포션을 마셨다. HP +${heal}`);
+    }
+    if (nx === state.stairs.x && ny === state.stairs.y) {
+      state.floor++;
+      generateFloor();
+      log(`계단을 내려가 ${state.floor}층에 도착했다.`);
+      render();
+      return;
+    }
+  }
+  state.turn++;
+  enemyTurn();
+  render();
+}
+
+function playerAttack(enemy) {
+  const dmg = rand(...state.player.atk);
+  enemy.hp -= dmg;
+  log(`${enemy.type.name}을(를) 공격! (-${dmg})`);
+  if (enemy.hp <= 0) {
+    state.enemies = state.enemies.filter(e => e !== enemy);
+    log(`${enemy.type.name}을(를) 처치했다! +${enemy.type.xp} XP`);
+    gainXp(enemy.type.xp);
+  }
+}
+
+function gainXp(xp) {
+  const p = state.player;
+  p.xp += xp;
+  while (p.xp >= p.xpNext) {
+    p.xp -= p.xpNext;
+    p.level++;
+    p.xpNext = Math.floor(p.xpNext * 1.4);
+    p.maxHp += 5;
+    p.hp = p.maxHp;
+    p.atk = [p.atk[0] + 1, p.atk[1] + 1];
+    log(`레벨 업! Lv.${p.level} (HP/공격력 상승)`);
+  }
+}
+
+function enemyTurn() {
+  const p = state.player;
+  state.enemies.forEach(e => {
+    const dx = p.x - e.x, dy = p.y - e.y;
+    const dist = Math.abs(dx) + Math.abs(dy);
+    if (dist === 1) {
+      const dmg = rand(...e.type.atk);
+      p.hp -= dmg;
+      log(`${e.type.name}에게 공격받았다! (-${dmg})`);
+      if (p.hp <= 0) { p.hp = 0; gameOver(); }
+      return;
+    }
+    if (dist <= 6) {
+      const sx = Math.sign(dx), sy = Math.sign(dy);
+      const moves = [];
+      if (dx !== 0) moves.push({ x: e.x + sx, y: e.y });
+      if (dy !== 0) moves.push({ x: e.x, y: e.y + sy });
+      for (const m of moves) {
+        if (m.x >= 0 && m.x < COLS && m.y >= 0 && m.y < ROWS &&
+            state.grid[m.y][m.x] === FLOOR && !enemyAt(m.x, m.y) &&
+            !(m.x === p.x && m.y === p.y)) {
+          e.x = m.x; e.y = m.y;
+          break;
+        }
+      }
+    } else if (Math.random() < 0.3) {
+      const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+      const [rx, ry] = dirs[rand(0, 3)];
+      const m = { x: e.x + rx, y: e.y + ry };
+      if (m.x >= 0 && m.x < COLS && m.y >= 0 && m.y < ROWS &&
+          state.grid[m.y][m.x] === FLOOR && !enemyAt(m.x, m.y)) {
+        e.x = m.x; e.y = m.y;
+      }
+    }
+  });
+}
+
+function gameOver() {
+  state.over = true;
+  log('쓰러졌다...');
+  document.getElementById('overlayTitle').textContent = '게임 오버';
+  document.getElementById('overlayStats').textContent =
+    `${state.floor}층 도달 · Lv.${state.player.level} · 턴 ${state.turn}`;
+  document.getElementById('overlay').classList.add('show');
+}
+
+function render() {
+  const p = state.player;
+  const visRadius = 6.5;
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      const d = Math.hypot(x - p.x, y - p.y);
+      if (d <= visRadius) state.visited[y][x] = true;
+    }
+  }
+
+  ctx.fillStyle = '#08090c';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      if (!state.visited[y][x]) continue;
+      const d = Math.hypot(x - p.x, y - p.y);
+      const visible = d <= visRadius;
+      const cx = x * CELL + CELL / 2, cy = y * CELL + CELL / 2;
+      if (state.grid[y][x] === FLOOR) {
+        ctx.fillStyle = visible ? '#1a1d24' : '#121318';
+        ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+      } else {
+        ctx.fillStyle = visible ? '#20242e' : '#15171d';
+        ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+      }
+      if (!visible) continue;
+      if (x === state.stairs.x && y === state.stairs.y) {
+        ctx.fillStyle = '#ffe08a';
+        ctx.fillText('>', cx, cy);
+      }
+    }
+  }
+
+  state.items.forEach(it => {
+    if (!state.visited[it.y][it.x] || Math.hypot(it.x - p.x, it.y - p.y) > visRadius) return;
+    ctx.fillStyle = '#ffd166';
+    ctx.fillText('!', it.x * CELL + CELL / 2, it.y * CELL + CELL / 2);
+  });
+
+  state.enemies.forEach(e => {
+    if (Math.hypot(e.x - p.x, e.y - p.y) > visRadius) return;
+    ctx.fillStyle = e.type.color;
+    ctx.fillText(e.type.ch, e.x * CELL + CELL / 2, e.y * CELL + CELL / 2);
+  });
+
+  ctx.fillStyle = '#5bc9ff';
+  ctx.fillText('@', p.x * CELL + CELL / 2, p.y * CELL + CELL / 2);
+
+  document.getElementById('hpFill').style.width = `${Math.max(p.hp / p.maxHp * 100, 0)}%`;
+  document.getElementById('hpFill').style.background = p.hp / p.maxHp < 0.3 ? 'var(--hp-low)' : 'var(--hp)';
+  document.getElementById('hpText').textContent = `${p.hp}/${p.maxHp}`;
+  document.getElementById('floorText').textContent = `${state.floor}층`;
+  document.getElementById('levelText').textContent = `Lv.${p.level} (${p.xp}/${p.xpNext})`;
+  document.getElementById('turnText').textContent = `${state.turn}턴`;
+}
+
+const KEY_MAP = {
+  ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+  w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
+  W: [0, -1], S: [0, 1], A: [-1, 0], D: [1, 0],
+};
+window.addEventListener('keydown', e => {
+  if (KEY_MAP[e.key]) {
+    e.preventDefault();
+    tryMove(...KEY_MAP[e.key]);
+  }
+});
+document.querySelectorAll('.dpad button').forEach(btn => {
+  btn.addEventListener('click', () => tryMove(+btn.dataset.dx, +btn.dataset.dy));
+});
+document.getElementById('restartBtn').addEventListener('click', newGame);
+
+newGame();
+</script>
+</body>
+</html>

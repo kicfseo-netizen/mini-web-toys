@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>오늘의 작은 프로젝트들</title>
+<style>
+  :root {
+    --bg: #0a0b0f; --panel: #14161d; --border: #262a35;
+    --text: #e6e8ee; --muted: #8b93a5; --accent: #7c5cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    padding: 32px;
+  }
+  .wrap { max-width: 780px; width: 100%; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  p.sub { color: var(--muted); margin-top: 0; margin-bottom: 28px; font-size: 14px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  a.card {
+    display: block; text-decoration: none; color: var(--text);
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px; transition: transform .15s, border-color .15s;
+  }
+  a.card:hover { transform: translateY(-2px); border-color: var(--accent); }
+  .emoji { font-size: 28px; margin-bottom: 10px; display: block; }
+  .card h2 { font-size: 16px; margin: 0 0 6px; }
+  .card p { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧪 오늘의 작은 프로젝트들</h1>
+  <p class="sub">생산성 도구, 창의적인 장난감, 게임 — 각각 클릭해서 바로 실행해보세요.</p>
+  <div class="cards">
+    <a class="card" href="./todo-app/index.html">
+      <span class="emoji">📋</span>
+      <h2>마크다운 칸반</h2>
+      <p>드래그 앤 드롭 할일 보드. 태그/우선순위 필터, 마크다운으로 내보내기·가져오기 지원.</p>
+    </a>
+    <a class="card" href="./art-canvas/index.html">
+      <span class="emoji">✨</span>
+      <h2>제너레이티브 아트</h2>
+      <p>파티클, 플로우필드, 프랙탈 나무 3가지 모드. 마우스로 그리고 PNG로 저장.</p>
+    </a>
+    <a class="card" href="./mini-roguelike/index.html">
+      <span class="emoji">🗡️</span>
+      <h2>미니 로그라이크</h2>
+      <p>턴제 던전 탐험 게임. 방향키로 이동, 몬스터와 전투, 층마다 강해지는 던전.</p>
+    </a>
+  </div>
+</div>
+</body>
+</html>
