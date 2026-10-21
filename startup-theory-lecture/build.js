@@ -54,7 +54,7 @@ const IMG = [
   ["주서로", "juicero"], ["타다", "tada"], ["퀴비", "quibi"], ["드롭박스", "dropbox"], ["미국 국립과학재단", "nsf"], ["NSF", "nsf"],
   ["3M", "m3"], ["다리(Bridge)", "postit"], ["에어비앤비", "airbnb"], ["핵심 교훈", "airbnb"], ["NASA", "nasa"], ["P&G", "factory"],
   ["테슬라", "tesla"], ["스팽스", "spanx"], ["태양의 서커스", "cirque"], ["GE", "ge"], ["네스프레소", "nespresso"],
-  ["BMC가 맞는 경우", "nespresso"], ["우버", "uber"], ["린 캔버스가 맞는 경우", "uber"], ["MIT", "mit"], ["제록스", "apple"],
+  ["BMC 적합", "nespresso"], ["우버", "uber"], ["린 캔버스 적합", "uber"], ["MIT", "mit"], ["제록스", "apple"],
   ["맥도날드", "mcd"], ["블루보틀", "bluebottle"], ["웹밴", "webvan"], ["배달의민족", "baemin"], ["국내 공공기술", "factory"],
 ];
 const imgFor = (t) => (IMG.find(([k]) => t.startsWith(k)) || [])[1];
@@ -62,17 +62,51 @@ function badge(s, key, x, y, sz) {
   s.addShape(pres.ShapeType.roundRect, { x, y, w: sz, h: sz, rectRadius: 0.06, fill: { color: WHITE }, line: { color: GRAY, width: 0.75 }, objectName: "img-frame-" + key });
   s.addImage({ path: `img/${key}.png`, x: x + sz * 0.13, y: y + sz * 0.13, w: sz * 0.74, h: sz * 0.74, altText: key, objectName: "img-" + key });
 }
+// Case photos from Wikimedia Commons (credits on the last slide), cropped to the frame's aspect ratio
+const { execFileSync } = require("child_process");
+const PHOTO = [
+  ["주서로", "juicero"], ["퀴비", "quibi"], ["드롭박스", "dropbox"], ["다리(Bridge)", "postit"], ["3M 포스트잇", "postit"], ["핵심 교훈", "airbnb"],
+  ["테슬라", "tesla"], ["스팽스", "spanx"], ["태양의 서커스", "cirque"], ["GE", "mri"], ["BMC 적합", "nespresso"],
+  ["웹밴 vs", "webvan2"], ["배달의민족", "baemin"], ["국내 공공기술", "etri"],
+];
+const photoFor = (t) => (PHOTO.find(([k]) => t.startsWith(k)) || [])[1];
+function photo(s, key, x, y, w, h) {
+  const out = `photos/crop/${key}_${Math.round(w * 100)}x${Math.round(h * 100)}.jpg`;
+  execFileSync("python3", ["-c", `
+import sys,os
+from PIL import Image, ImageOps
+os.makedirs(os.path.dirname(sys.argv[2]), exist_ok=True)
+im = Image.open(sys.argv[1]).convert("RGB")
+r = float(sys.argv[3]); W = 900; H = int(W / r)
+ImageOps.fit(im, (W, H), Image.LANCZOS, centering=(0.5, 0.45)).save(sys.argv[2], quality=86)`, `photos/${key}.jpg`, out, String(w / h)]);
+  s._photo = true;
+  s.addImage({ path: out, x, y, w, h, altText: key + " photo", objectName: "photo-" + key });
+  s.addShape(pres.ShapeType.rect, { x, y, w, h, fill: { type: "none" }, line: { color: WHITE, width: 1.5 }, objectName: "photo-frame-" + key });
+}
 // "CASE" motif: tinted card + red chip
 function caseBox(s, x, y, w, h, title, body, opts = {}) {
   box(s, x, y, w, h, opts.fill || PINK, "case-card");
   s.addShape(pres.ShapeType.roundRect, { x: x + 0.12, y: y + 0.1, w: 0.62, h: 0.24, rectRadius: 0.05, fill: { color: RED }, line: { type: "none" }, objectName: "case-chip" });
   txt(s, "CASE", { x: x + 0.12, y: y + 0.1, w: 0.62, h: 0.24, fontSize: 9, bold: true, color: WHITE, align: "center", valign: "middle", margin: 0 });
-  const key = opts.img || imgFor(title), sz = Math.min(0.62, h - 0.2), pad = key ? sz + 0.12 : 0;
-  if (key) badge(s, key, x + w - sz - 0.1, y + 0.1, sz);
+  const pk = opts.photo === false ? null : opts.photo || photoFor(title);
+  let pad = 0, top = 0;
+  if (pk && (w < 4.4 || opts.top)) { // narrow card: photo strip under the title row
+    const ph = opts.ph || 1.0;
+    photo(s, pk, x + 0.12, y + 0.42, w - 0.24, ph);
+    top = ph + 0.08;
+  } else if (pk) { // wide card: photo on the right, full height
+    const phh = h - 0.2, pw = Math.min(phh * 1.5, w * 0.36);
+    photo(s, pk, x + w - pw - 0.1, y + 0.1, pw, phh);
+    pad = pw + 0.12;
+  } else {
+    const key = opts.img || imgFor(title), sz = Math.min(0.62, h - 0.2);
+    if (key) { badge(s, key, x + w - sz - 0.1, y + 0.1, sz); pad = sz + 0.12; }
+  }
   txt(s, title, { x: x + 0.82, y: y + 0.07, w: w - 0.92 - pad, h: 0.32, fontSize: opts.titleSize || 12, bold: true, color: RED, valign: "middle" });
-  txt(s, body, { x: x + 0.12, y: y + 0.42, w: w - 0.24 - pad, h: h - 0.48, fontSize: opts.size || 10.5, paraSpaceAfter: 2 });
+  txt(s, body, { x: x + 0.12, y: y + 0.42 + top, w: w - 0.24 - pad, h: h - 0.48 - top, fontSize: opts.size || 10.5, paraSpaceAfter: 2 });
 }
 function source(s, text) {
+  if (s._photo) text += " | 사진: Wikimedia Commons(21쪽)";
   txt(s, "출처: " + text, { x: 0.4, y: 5.3, w: 8.6, h: 0.25, fontSize: 8, italic: true, valign: "middle", margin: 0 });
 }
 const bullets = (arr, o = {}) => arr.map((t, i) => ({ text: t, options: { bullet: { indent: 12 }, breakLine: i < arr.length - 1, ...o } }));
@@ -93,13 +127,13 @@ pres.addSection({ title: "01 창업 실패 이유 설문" });
     valGridLine: { style: "none" }, catGridLine: { style: "none" }, showLegend: false,
   });
   // highlight top-2
-  box(s, 6.3, 1.33, 3.3, 1.55, ICE, "takeaway");
+  box(s, 6.3, 1.33, 3.3, 1.1, ICE, "takeaway");
   txt(s, [
     { text: "응답 1·2위", options: { fontSize: 11, bold: true, color: NAVY, breakLine: true } },
-    { text: "니즈 42% · 자금 29%", options: { fontSize: 18, bold: true, color: RED, breakLine: true } },
+    { text: "니즈 42% · 자금 29%", options: { fontSize: 16, bold: true, color: RED, breakLine: true } },
     { text: "창업자 스스로는 ‘고객이 원하지 않았다’, ‘돈이 떨어졌다’를 가장 큰 실패 원인으로 꼽음", options: { fontSize: 10.5 } },
-  ], { x: 6.42, y: 1.4, w: 3.1, h: 1.42 });
-  caseBox(s, 6.3, 3.0, 3.3, 2.22, "주서로 (2017)",
+  ], { x: 6.42, y: 1.36, w: 3.1, h: 1.04 });
+  caseBox(s, 6.3, 2.55, 3.3, 2.67, "주서로 (2017)",
     bullets([
       "1.2억 달러 투자 유치, 700달러짜리 와이파이 착즙기 출시",
       "블룸버그: 전용 팩은 손으로 짜도 동일하게 착즙됨",
@@ -176,24 +210,24 @@ pres.addSection({ title: "02 실패의 진짜 원인" });
   const s = newSlide("02", "같은 시대, 같은 온라인 유통: 승패를 가른 것은 ‘방법’", "02 실패의 진짜 원인");
   // Webvan
   box(s, 0.4, 1.35, 4.5, 2.95, PINK, "webvan");
-  badge(s, "webvan", 4.25, 1.45, 0.52);
-  txt(s, "웹밴(Webvan) – 실패", { x: 0.55, y: 1.42, w: 3.6, h: 0.35, fontSize: 15, bold: true, color: RED });
+  photo(s, "webvan", 0.55, 1.8, 4.2, 0.98);
+  txt(s, "웹밴(Webvan) – 실패", { x: 0.55, y: 1.42, w: 4.2, h: 0.35, fontSize: 15, bold: true, color: RED });
   txt(s, bullets([
     "1999년 온라인 식료품 배송 / IPO 포함 약 8억 달러 조달",
     "고객 검증 전, 10억 달러 규모 자동화 물류창고 계약",
     "수요가 계획에 못 미쳐 2001년 파산",
     "실패 원인: 사업계획서대로 ‘실행’만 하고 ‘검증’ 단계가 없었음",
-  ]), { x: 0.55, y: 2.02, w: 4.2, h: 2.23, fontSize: 11.5, paraSpaceAfter: 6 });
+  ]), { x: 0.55, y: 2.84, w: 4.2, h: 1.42, fontSize: 10.5, paraSpaceAfter: 2 });
   // Zappos
   box(s, 5.1, 1.35, 4.5, 2.95, ICE, "zappos");
-  badge(s, "zappos", 8.95, 1.45, 0.52);
-  txt(s, "자포스(Zappos) – 성공", { x: 5.25, y: 1.42, w: 3.6, h: 0.35, fontSize: 15, bold: true, color: TEAL });
+  photo(s, "zappos", 5.25, 1.8, 4.2, 0.98);
+  txt(s, "자포스(Zappos) – 성공", { x: 5.25, y: 1.42, w: 4.2, h: 0.35, fontSize: 15, bold: true, color: TEAL });
   txt(s, bullets([
     "1999년 창업자가 동네 신발가게 사진을 찍어 웹에 게시",
     "주문이 들어오면 매장에서 사서 직접 배송 → 재고 없이 수요 검증",
     "검증 후 단계적 확장, 2009년 아마존이 약 12억 달러에 인수",
     "성공 요인: 최소 비용으로 ‘고객이 온라인으로 신발을 살까?’를 먼저 확인",
-  ]), { x: 5.25, y: 2.02, w: 4.2, h: 2.23, fontSize: 11.5, paraSpaceAfter: 6 });
+  ]), { x: 5.25, y: 2.84, w: 4.2, h: 1.42, fontSize: 10.5, paraSpaceAfter: 2 });
   caseBox(s, 0.4, 4.45, 9.2, 0.78, "드롭박스(Dropbox), 2007",
     "제품 완성 전 3분짜리 데모 영상(MVP)만 공개 → 하룻밤 사이 베타 대기자 5,000명에서 75,000명으로 증가. 개발 전에 수요를 증명했다.", { size: 10.5 });
   source(s, "S. Blank, 「The Startup Owner’s Manual」(2012); E. Ries, 「The Lean Startup」(2011)");
@@ -265,12 +299,17 @@ function theoryCards(s, items, cols, top, cardH, opts = {}) {
     const r = Math.floor(i / cols), c = i % cols;
     const x = 0.4 + c * (w + gap), y = top + r * (cardH + gap);
     box(s, x, y, w, cardH, GRAY, "card-" + i);
-    const key = imgFor(it.ex), bs = 0.44;
+    const pk = opts.photos ? photoFor(it.ex) : null;
+    const key = pk ? null : imgFor(it.ex), bs = key ? 0.44 : 0;
     if (key) badge(s, key, x + w - bs - 0.08, y + 0.08, bs);
-    txt(s, [{ text: it.yr + "  ", options: { color: opts.accent || RED } }, { text: it.name, options: { color: NAVY } }], { x: x + 0.08, y: y + 0.05, w: w - 0.16 - bs, h: opts.headH || 0.32, fontSize: opts.head || 12, bold: true, valign: "middle" });
+    const caseTop = y + cardH - (opts.caseH || 0.62) - 0.06;
+    let sideW = 0;
+    if (pk && opts.photos === "side") { sideW = 1.45; photo(s, pk, x + w - sideW - 0.08, y + 0.1, sideW, caseTop - y - 0.18); }
+    if (pk && opts.photos === "strip") photo(s, pk, x + 0.08, caseTop - 1.12, w - 0.16, 1.04);
+    txt(s, [{ text: it.yr + "  ", options: { color: opts.accent || RED } }, { text: it.name, options: { color: NAVY } }], { x: x + 0.08, y: y + 0.05, w: w - 0.16 - bs - sideW, h: opts.headH || 0.32, fontSize: opts.head || 12, bold: true, valign: "middle" });
     const dy = (opts.headH || 0.32) - 0.32;
-    txt(s, it.who, { x: x + 0.08, y: y + 0.36 + dy, w: w - 0.16 - bs, h: 0.24, fontSize: 9, italic: true });
-    txt(s, it.what, { x: x + 0.08, y: y + 0.6 + dy, w: w - 0.16, h: opts.whatH || 0.75, fontSize: opts.size || 10.5 });
+    txt(s, it.who, { x: x + 0.08, y: y + 0.36 + dy, w: w - 0.16 - bs - sideW, h: 0.24, fontSize: 9, italic: true });
+    txt(s, it.what, { x: x + 0.08, y: y + 0.6 + dy, w: w - 0.16 - sideW, h: opts.whatH || 0.75, fontSize: opts.size || 10.5 });
     const cy = y + cardH - (opts.caseH || 0.62) - 0.06;
     box(s, x + 0.06, cy, w - 0.12, opts.caseH || 0.62, PINK, "card-case-" + i);
     txt(s, [{ text: "사례 ", options: { bold: true, color: RED } }, { text: it.ex }], { x: x + 0.1, y: cy, w: w - 0.2, h: opts.caseH || 0.62, fontSize: opts.caseSize || 9.5, valign: "middle" });
@@ -282,8 +321,8 @@ function theoryCards(s, items, cols, top, cardH, opts = {}) {
     { yr: "1974/1995", name: "TRL (기술성숙도)", who: "NASA – S. Sadin(1974) / J. Mankins(1995, 9단계)", what: "기초원리 발견(1)부터 실제 운용(9)까지 기술의 성숙 단계를 객관적으로 측정하는 척도", ex: "NASA 우주 프로젝트 평가 기준 → 국내 정부 R&D 과제도 TRL로 목표·성과 관리" },
     { yr: "1986", name: "Stage-Gate", who: "Robert G. Cooper", what: "신제품 개발을 단계(Stage)로 나누고 각 관문(Gate)에서 진행/중단을 결정해 위험을 관리", ex: "P&G·3M 등 다수 글로벌 제조기업이 신제품 개발 프로세스로 도입" },
     { yr: "1991", name: "Crossing the Chasm", who: "Geoffrey A. Moore", what: "혁신 수용자와 초기 다수 사이의 ‘캐즘(단절)’을 넘으려면 틈새시장 집중이 필요", ex: "테슬라: 로드스터(얼리어답터) → 모델S → 모델3로 단계적 대중시장 진입" },
-    { yr: "1997", name: "Commercializing New Technologies", who: "Vijay K. Jolly (졸리 모델)", what: "기술사업화를 5단계 하위 프로세스와 4개 연결다리(이해관계자 동원)로 체계화", ex: "3M 포스트잇: 실패한 접착제(1968) → 전국 출시(1980)" },
-  ], 2, 1.35, 1.82, { whatH: 0.55, caseH: 0.5 });
+    { yr: "1997", name: "Commercializing New Tech.", who: "Vijay K. Jolly (졸리 모델)", what: "기술사업화를 5단계 하위 프로세스와 4개 연결다리(이해관계자 동원)로 체계화", ex: "3M 포스트잇: 실패한 접착제(1968) → 전국 출시(1980)" },
+  ], 2, 1.35, 1.82, { whatH: 0.68, caseH: 0.5, size: 10, photos: "side" });
   source(s, "Mankins(1995) Technology Readiness Levels; Cooper(1990) Stage-Gate Systems; Moore(1991); Jolly(1997)");
   s.addNotes("1세대 이론은 대기업·연구소가 '이미 개발된 기술'을 어떻게 관리하고 시장에 내보낼지에 집중했습니다. TRL은 기술의 성숙도를, Stage-Gate는 개발 프로세스를, 캐즘은 시장 확산을, 졸리 모델은 기술사업화 전 과정을 다룹니다.");
 }
@@ -293,7 +332,7 @@ function theoryCards(s, items, cols, top, cardH, opts = {}) {
     { yr: "2001", name: "Effectuation", who: "Saras Sarasvathy", what: "목표에서 출발하는 인과적 사고가 아니라, ‘지금 가진 자원’에서 출발해 감당 가능한 손실 범위 안에서 기회를 만들어가는 전문 창업가의 사고방식", ex: "스팽스(Spanx): 사라 블레이클리가 저축 5,000달러로 시작 – 감당 가능한 손실 원칙" },
     { yr: "2005", name: "Blue Ocean Strategy", who: "W. Chan Kim & Renée Mauborgne", what: "경쟁이 치열한 레드오션 대신 가치 혁신(차별화+저비용)으로 경쟁 없는 새 시장을 창출", ex: "태양의 서커스: 동물쇼·스타 없앤 공연예술형 서커스 / 닌텐도 Wii" },
     { yr: "2005~2009", name: "Design Thinking", who: "IDEO · d.school · T. Brown", what: "공감–정의–아이디어–프로토타입–테스트로 고객의 숨은 니즈에서 해결책을 도출하는 인간중심 혁신 방법", ex: "GE 헬스케어 ‘어드벤처 MRI’, 에어비앤비 초기 성장" },
-  ], 3, 1.35, 3.85, { headH: 0.5, whatH: 1.6, caseH: 0.95, size: 12, caseSize: 10.5 });
+  ], 3, 1.35, 3.85, { photos: "strip", headH: 0.5, whatH: 0.9, caseH: 0.95, size: 11, caseSize: 10.5 });
   source(s, "Sarasvathy(2001) AMR; Kim & Mauborgne(2005) Blue Ocean Strategy; Brown(2008) HBR “Design Thinking”");
   s.addNotes("2000년대에는 창업가 개인의 사고방식과 전략으로 관심이 옮겨갑니다. 이 중 디자인 씽킹은 '고객의 니즈를 어떻게 찾는가'라는, 설문 1위 실패요인(시장 니즈 없음)에 직접 답하는 방법론이라 뒤에서 자세히 다룹니다.");
 }
@@ -354,7 +393,7 @@ pres.addSection({ title: "04 졸리 모델" });
   });
   txt(s, "▲ 다리(Bridge): 다음 단계로 넘어가기 위해 투자자·파트너·고객 등 이해관계자를 동원하는 활동", { x: 0.4, y: 3.95, w: 9.2, h: 0.3, fontSize: 10, bold: true, color: RED });
   caseBox(s, 0.4, 4.3, 9.2, 0.92, "국내 공공기술 이전 사업화",
-    "대학·출연연 기술이전 후 사업화에 실패하는 다수의 사례는 ‘기술(시연)’ 단계는 넘었지만 ‘시장 구성원 동원(다리 3)’과 ‘보완 자산 확보(다리 4)’를 설계하지 않은 경우다. 졸리 모델은 기술 단계와 함께 각 다리의 이해관계자 동원 계획을 요구한다.", { size: 10 });
+    "대학·출연연 기술이전 후 사업화 실패는 대개 ‘시연’ 단계는 넘었지만 ‘시장 구성원 동원(다리 3)’과 ‘보완 자산 확보(다리 4)’를 설계하지 않은 경우다.", { size: 10 });
   source(s, "Jolly, V. K.(1997), Commercializing New Technologies: Getting from Mind to Market, Harvard Business School Press");
   s.addNotes("졸리 모델의 핵심은 '단계'만이 아니라 단계 사이의 '다리'입니다. 상상→배양 사이에는 관심과 지지를, 배양→시연 사이에는 시연을 위한 자원을, 시연→촉진 사이에는 유통·고객 등 시장 구성원을, 촉진→지속 사이에는 생산·서비스 등 보완 자산을 동원해야 합니다. 기술은 좋은데 사업화에 실패하는 경우는 대개 이 다리를 놓지 못한 것입니다.");
 }
@@ -373,10 +412,10 @@ pres.addSection({ title: "04 졸리 모델" });
     s.addShape(pres.ShapeType.ellipse, { x: x + 0.62, y: 2.07, w: 0.4, h: 0.4, fill: { color: i === 2 ? RED : NAVY }, line: { color: WHITE, width: 2 }, objectName: "tl-dot-" + i });
     txt(s, yr, { x, y: 1.4, w: 1.65, h: 0.35, fontSize: 16, bold: true, color: NAVY, align: "center" });
     txt(s, st, { x, y: 1.72, w: 1.65, h: 0.3, fontSize: 11, bold: true, color: RED, align: "center" });
-    box(s, x, 2.6, 1.65, 1.15, GRAY, "tl-card-" + i);
-    txt(s, d, { x: x + 0.05, y: 2.62, w: 1.55, h: 1.1, fontSize: 10, valign: "middle" });
+    box(s, x, 2.6, 1.65, 0.98, GRAY, "tl-card-" + i);
+    txt(s, d, { x: x + 0.05, y: 2.61, w: 1.55, h: 0.96, fontSize: 10, valign: "middle" });
   });
-  caseBox(s, 0.4, 3.9, 9.2, 1.32, "다리(Bridge)가 성패를 가른 지점",
+  caseBox(s, 0.4, 3.72, 9.2, 1.5, "다리(Bridge)가 성패를 가른 지점",
     bullets([
       "다리 1·2: 사내 ‘15% 규칙’과 경영진 지지로 실패한 기술에 개발 자원 확보",
       "다리 3: 시험판매 실패 후 포기하지 않고 ‘써보게 하는’ 무료 샘플로 시장 구성원(사무직 고객) 동원",
@@ -452,7 +491,8 @@ function canvas(s, cells, colorMap, imgKey) {
     s.addShape(pres.ShapeType.rect, { x, y, w, h, fill: { color: colorMap[k] || GRAY }, line: { color: WHITE, width: 2 }, objectName: "cell-" + k });
     txt(s, [{ text: title, options: { bold: true, color: NAVY, fontSize: 10, breakLine: true } }, { text: body, options: { fontSize: 10 } }], { x: x + 0.04, y: y + 0.02, w: w - 0.08, h: h - 0.04 });
   });
-  if (imgKey) badge(s, imgKey, X + 2 * colW + (colW - 0.8) / 2, Y + topH - 0.95, 0.8);
+  if (imgKey && imgKey.startsWith("photo:")) photo(s, imgKey.slice(6), X + 2 * colW + 0.1, Y + topH - 1.3, colW - 0.2, 1.2);
+  else if (imgKey) badge(s, imgKey, X + 2 * colW + (colW - 0.8) / 2, Y + topH - 0.95, 0.8);
 }
 {
   const s = newSlide("06", "비즈니스 모델 캔버스(BMC) 9블록 – 사례: 네스프레소", "06 BMC vs 린 캔버스");
@@ -466,7 +506,7 @@ function canvas(s, cells, colorMap, imgKey) {
     c5: ["① 고객 세그먼트", "프리미엄 커피를 원하는 가정·사무실 고객"],
     b1: ["⑨ 비용 구조", "캡슐 생산·유통비, 마케팅비(광고·모델), 매장 운영비"],
     b2: ["⑤ 수익원", "머신은 저렴하게, 캡슐 반복 구매로 지속 수익 (면도기-면도날 모델)"],
-  }, { c3: PINK, c5: ICE, b2: ICE }, "nespresso");
+  }, { c3: PINK, c5: ICE, b2: ICE }, "photo:nespresso2");
   txt(s, "Osterwalder & Pigneur(2010): 고객–가치–인프라–재무 9요소로 기존·신규 기업 모두의 비즈니스 모델을 한 장에 시각화", { x: 0.4, y: 5.0, w: 9.2, h: 0.28, fontSize: 9.5, italic: true, color: TEAL });
   source(s, "Osterwalder, A. & Pigneur, Y.(2010), Business Model Generation; Nestlé Nespresso 공개자료");
   s.addNotes("BMC는 오른쪽(고객·가치·채널·관계·수익)과 왼쪽(파트너·활동·자원·비용)을 가치제안이 연결하는 구조입니다. 네스프레소는 머신을 싸게 팔고 캡슐 반복 구매로 수익을 내는 '면도기-면도날' 패턴의 대표 사례로, 이미 작동하는 사업의 구조를 한눈에 보여줍니다.");
@@ -503,9 +543,9 @@ function canvas(s, cells, colorMap, imgKey) {
     [{ text: "강점/한계", options: k }, { text: "전체 구조 파악에 탁월 / 시장 리스크 표현 약함", options: v }, { text: "리스크 중심 빠른 검증 / 운영 구조 표현 약함", options: v }],
   ];
   s.addTable(rows, { x: 0.4, y: 1.35, w: 9.2, colW: [1.5, 3.85, 3.85], rowH: 0.36, border: { type: "solid", pt: 1, color: "FFFFFF" }, fontFace: THEME.bodyFontFace });
-  caseBox(s, 0.4, 4.05, 4.5, 1.17, "BMC가 맞는 경우: 네스프레소",
+  caseBox(s, 0.4, 4.05, 4.5, 1.17, "BMC 적합: 네스프레소",
     "이미 작동하는 사업에서 ‘머신 판매’ 대신 ‘캡슐 반복 구매’로 수익 구조를 재설계 – 전체 구조 변경이 핵심", { size: 10, titleSize: 11 });
-  caseBox(s, 5.1, 4.05, 4.5, 1.17, "린 캔버스가 맞는 경우: 우버 초기",
+  caseBox(s, 5.1, 4.05, 4.5, 1.17, "린 캔버스 적합: 우버 초기",
     "‘사람들이 낯선 기사의 차를 앱으로 부를까?’라는 문제·해결 가설을 샌프란시스코에서 먼저 검증", { size: 10, titleSize: 11 });
   source(s, "Osterwalder & Pigneur(2010); Maurya(2012) Running Lean");
   s.addNotes("정리하면 BMC는 '어떻게 돌아가는 사업인가'를, 린 캔버스는 '무엇을 먼저 검증해야 하는가'를 보여줍니다. 실무에서는 초기에 린 캔버스로 가설을 검증하고, 사업이 안정되면 BMC로 운영 구조를 설계하는 순서로 함께 쓰는 것이 일반적입니다.");
@@ -546,13 +586,10 @@ pres.addSection({ title: "07 스타트업 오너스 매뉴얼" });
   caseBox(s, 5.0, 1.35, 4.6, 3.87, "배달의민족(우아한형제들), 2010",
     [
       { text: "가설: ", options: { bold: true } }, { text: "사람들은 배달 음식점 정보를 쉽게 찾고 싶어한다", options: { breakLine: true } },
-      { text: " ", options: { fontSize: 5, breakLine: true } },
       { text: "현장 검증: ", options: { bold: true } }, { text: "창업팀이 직접 거리와 아파트 단지를 돌며 버려진 전단지를 수집해 음식점 데이터를 구축", options: { breakLine: true } },
-      { text: " ", options: { fontSize: 5, breakLine: true } },
       { text: "문제 재정의: ", options: { bold: true } }, { text: "전단지 정보가 흩어져 있다는 고객 불편 + 광고 효과를 알 수 없다는 사장님 불편을 동시에 확인", options: { breakLine: true } },
-      { text: " ", options: { fontSize: 5, breakLine: true } },
       { text: "결과: ", options: { bold: true } }, { text: "양면 고객의 문제를 검증한 뒤 서비스 확장 → 2019년 딜리버리히어로가 약 40억 달러 가치로 인수 합의", options: { color: RED, bold: true } },
-    ], { size: 10.5 });
+    ], { size: 10, top: true, ph: 1.25 });
   txt(s, "핵심 원칙: 사무실 안에는 사실(Fact)이 없다. 모든 가설은 고객을 만나 검증한다.", { x: 0.4, y: 4.75, w: 4.4, h: 0.47, fontSize: 10.5, bold: true, color: RED, valign: "middle" });
   source(s, "Blank & Dorf(2012); 우아한형제들 창업 스토리(언론 보도); Delivery Hero 발표(2019.12)");
   s.addNotes("고객 발굴은 BMC 9블록을 가설로 적고, 사무실 밖으로 나가 고객을 만나 하나씩 검증하는 과정입니다. 배달의민족 창업팀이 전단지를 직접 주우며 데이터를 모은 일화는 국내의 대표적인 'Get out of the building' 사례입니다.");
@@ -581,6 +618,40 @@ pres.addSection({ title: "08 종합" });
   ], { x: 0.6, y: 4.0, w: 8.8, h: 1.22, color: WHITE, valign: "middle", align: "center" });
   source(s, "본 강의 종합(CB Insights; Startup Genome; Jolly 1997; Osterwalder 2010; Maurya 2012; Blank & Dorf 2012)");
   s.addNotes("설문에서 창업자들이 꼽은 실패 원인들은 모두 이번 강의에서 다룬 방법론으로 예방할 수 있습니다. 각 원인에 대응하는 방법론과 실패·성공 사례를 다시 정리했습니다. 창업 실패의 진짜 원인은 '방법을 모르고 창업하는 것'입니다.");
+}
+
+// ======================= 사진 출처 =======================
+pres.addSection({ title: "사진 출처" });
+{
+  const s = newSlide("※", "사진 출처 및 라이선스", "사진 출처");
+  const credits = [
+    ["1", "분해된 주서로 착즙기", "Steve Jurvetson", "CC BY 2.0"],
+    ["3", "퀴비 로고", "Quibi Holdings LLC", "Public domain"],
+    ["4", "웹밴 배송 트럭", "Mark Coggins", "CC BY 2.0"],
+    ["4", "자포스 본사 입구", "Svoboda v práci", "CC BY-SA 2.0"],
+    ["4", "드롭박스 창업자 D. 휴스턴", "Financial Times", "CC BY 2.0"],
+    ["7", "테슬라 로드스터", "BrokenSphere", "CC BY-SA 3.0"],
+    ["7·12", "포스트잇 메모지", "EraserGirl", "Public domain"],
+    ["8", "스팽스 매장", "Mike Mozart", "CC BY 2.0"],
+    ["8", "태양의 서커스 공연장", "Jean Gagnon", "CC BY-SA 3.0"],
+    ["8·13", "GE MRI 검사실", "Glitzy queen00", "Public domain"],
+    ["11", "한국전자통신연구원(ETRI)", "Yoshi Canopus", "GFDL"],
+    ["14", "에어비앤비 본사", "Steve Jurvetson", "CC BY 2.0"],
+    ["15", "네스프레소 버츄오 머신", "bjoern (Hamburg)", "CC BY 2.0"],
+    ["17", "네스프레소 캡슐", "Nicolas Richoffer", "CC BY-SA 4.0"],
+    ["18", "웹밴 본사(2001.9)", "Pal Danyi", "CC BY-SA 4.0"],
+    ["19", "배민 배달 오토바이", "마라아탕", "CC0"],
+  ];
+  const head = { bold: true, color: WHITE, fill: { color: NAVY }, align: "center", valign: "middle", fontSize: 10 };
+  const v = { fontSize: 9, valign: "middle", color: TXT, margin: 0.04 };
+  const half = (rows) => [[{ text: "쪽", options: head }, { text: "사진", options: head }, { text: "저작자", options: head }, { text: "라이선스", options: head }],
+    ...rows.map((r) => r.map((t, i) => ({ text: t, options: { ...v, align: i === 0 ? "center" : "left" } })))];
+  const tbl = { y: 1.35, w: 4.5, colW: [0.45, 1.6, 1.35, 1.1], rowH: 0.34, border: { type: "solid", pt: 0.75, color: "D9D9D9" }, fontFace: THEME.bodyFontFace };
+  s.addTable(half(credits.slice(0, 8)), { ...tbl, x: 0.4 });
+  s.addTable(half(credits.slice(8)), { ...tbl, x: 5.1 });
+  txt(s, "모든 사진은 Wikimedia Commons(commons.wikimedia.org)의 자유 라이선스 이미지입니다. 기업 로고는 simple-icons(CC0), 픽토그램은 react-icons 패키지에서 가져왔으며 각 상표권은 해당 기업에 있습니다.", { x: 0.4, y: 4.75, w: 9.2, h: 0.48, fontSize: 10, italic: true });
+  source(s, "Wikimedia Commons 각 파일 페이지");
+  s.addNotes("강의자료에 사용한 사진의 저작자와 라이선스입니다. CC BY·CC BY-SA 라이선스 사진은 저작자 표시가 필요하므로 이 슬라이드를 삭제하지 마세요.");
 }
 
 (async () => {
