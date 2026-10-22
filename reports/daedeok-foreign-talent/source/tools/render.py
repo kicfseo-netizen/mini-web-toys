@@ -102,7 +102,17 @@ def emit(bld, blocks, kind):
             font = o.get("font", "tbl")
             ncols = max(len(r) for r in rows)
             rows = [r + [""] * (ncols - len(r)) for r in rows]
-            bld.table(rows, widths=widths, header_rows=hr, aligns=aligns, merges=merges, font=font)
+            from hwpbuild import BF_HEAD, BF_SHADE
+            cell_bf = {}
+            for ri, row in enumerate(rows):
+                for ci, cell in enumerate(row):
+                    if cell.startswith("^^"):
+                        cell_bf[(ri, ci)] = BF_HEAD
+                        row[ci] = "\n".join("**%s**" % x if x else x for x in cell[2:].strip().split("\n"))
+                    elif cell.startswith("~~"):
+                        cell_bf[(ri, ci)] = BF_SHADE
+                        row[ci] = cell[2:].strip()
+            bld.table(rows, widths=widths, header_rows=hr, aligns=aligns, merges=merges, font=font, cell_bf=cell_bf)
             if o.get("src"):
                 bld.para(inline_runs("자료: " + o["src"], "note"), "note")
             elif o.get("note"):
@@ -179,6 +189,8 @@ def toc_pages(bld, toc, lot, lof, pages):
     bld.para([("표 목 차", "h1")], "h1")
     for cap, b in lot:
         bld.para([(cap + "\t" + pg(b), "toc3")], "toc2")
+    if not lof:
+        return
     bld.page_break()
     bld.para([("그 림 목 차", "h1")], "h1")
     for cap, b in lof:

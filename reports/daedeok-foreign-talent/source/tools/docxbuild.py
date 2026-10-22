@@ -150,6 +150,8 @@ class DocxBuilder:
                         k = ck
                         if red:
                             k = "tblred" if font == "tbl" else "notered"
+                        if seg.startswith("**") and seg.endswith("**") and len(seg) > 4:
+                            seg = seg[2:-2]; k = font + "b" if font + "b" in CHARS else k
                         runs.append((seg, k))
                     self.para(runs, pst, _container=cell)
         return t
