@@ -61,6 +61,7 @@ def emit(bld, blocks, kind):
         t = b["t"]
         if t == "h1":
             chapno, title = h1_runs(b["text"])
+            bld.gothic = (chapno == "제1장")
             bld.page_break()
             if chapno:
                 bld.para([(chapno, "h1s")], "h1top")
@@ -178,6 +179,14 @@ def submission(bld):
 
 
 def toc_pages(bld, toc, lot, lof, pages):
+    bld.gothic = True
+    try:
+        _toc_pages(bld, toc, lot, lof, pages)
+    finally:
+        bld.gothic = False
+
+
+def _toc_pages(bld, toc, lot, lof, pages):
     def pg(b):
         return str(pages.get(b["k"], "")) if pages else "0"
     bld.page_break()
@@ -218,4 +227,5 @@ def build(bld, pages=None, front_only=False):
     else:
         bld.new_main_section()
     emit(bld, blocks, "main")
+    bld.gothic = False
     return blocks, toc, lot, lof

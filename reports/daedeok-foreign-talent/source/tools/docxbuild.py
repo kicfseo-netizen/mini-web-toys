@@ -6,9 +6,9 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.section import WD_SECTION
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
-from hwpbuild import CHARS, PARAS, F_MJ, F_HD, F_GO, BF_HEAD, BF_BOX, BF_SHADE
+from hwpbuild import CHARS, PARAS, F_MJ, F_HD, F_GO, F_HG, BF_HEAD, BF_BOX, BF_SHADE
 
-FONTMAP = {F_MJ: ("휴먼명조", "NanumMyeongjo"), F_HD: ("HY헤드라인M", "NanumSquare ExtraBold"),
+FONTMAP = {F_HG: ("휴먼고딕", "NanumGothic"), F_MJ: ("휴먼명조", "NanumMyeongjo"), F_HD: ("HY헤드라인M", "NanumSquare ExtraBold"),
            F_GO: ("맑은 고딕", "NanumGothic")}
 ALIGN = {"JUSTIFY": WD_ALIGN_PARAGRAPH.JUSTIFY, "LEFT": WD_ALIGN_PARAGRAPH.LEFT,
          "CENTER": WD_ALIGN_PARAGRAPH.CENTER, "RIGHT": WD_ALIGN_PARAGRAPH.RIGHT}
@@ -32,6 +32,8 @@ class DocxBuilder:
         s.header_distance = Mm(15); s.footer_distance = Mm(15)
 
     def _font(self, run, ck):
+        if getattr(self, "gothic", False) and ("g_" + ck) in CHARS:
+            ck = "g_" + ck
         font, size, bold, color = CHARS[ck]
         name = FONTMAP[font][1 if self.proxy else 0]
         run.font.name = name
@@ -44,6 +46,10 @@ class DocxBuilder:
         run.font.size = Pt(size)
         run.font.bold = bold
         run.font.color.rgb = RGBColor.from_string(color[1:])
+        if self.proxy:
+            # Nanum Hangul glyphs are ~5% narrower than the Human fonts: widen to keep page breaks comparable
+            sp = OxmlElement("w:spacing"); sp.set(qn("w:val"), str(int(round(size))))
+            rpr.append(sp)
 
     def _fmt(self, p, style):
         align, left, ind, prev, nxt, ls, keep, tab = PARAS[style]
@@ -157,7 +163,16 @@ class DocxBuilder:
         return t
 
     def box(self, paras):
-        return self.table([[paras]], widths=[1], header_rows=0, cell_bf={(0, 0): BF_BOX}, repeat=False)
+        old = getattr(self, "gothic", False)
+        self.gothic = True
+        t = self.table([[paras]], widths=[1], header_rows=0, cell_bf={(0, 0): BF_BOX}, repeat=False)
+        self.gothic = old
+        tcPr = t.cell(0, 0)._element.get_or_add_tcPr()
+        mar = OxmlElement("w:tcMar")
+        for side, v in (("top", 220), ("bottom", 220), ("left", 340), ("right", 340)):
+            e = OxmlElement("w:" + side); e.set(qn("w:w"), str(v)); e.set(qn("w:type"), "dxa"); mar.append(e)
+        tcPr.append(mar)
+        return t
 
     def picture(self, path, width_mm, height_mm=None):
         p = self.doc.add_paragraph()

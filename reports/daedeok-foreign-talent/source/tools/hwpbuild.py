@@ -15,8 +15,8 @@ UCHAR = "http://www.hancom.co.kr/hwpml/2016/HwpUnitChar"
 
 TEXT_W = 42520  # 150 mm
 
-FONTS = ["휴먼명조", "HY헤드라인M", "맑은 고딕"]  # appended ids 2,3,4
-F_MJ, F_HD, F_GO = 2, 3, 4
+FONTS = ["휴먼명조", "HY헤드라인M", "맑은 고딕", "휴먼고딕"]  # appended ids 2,3,4,5
+F_MJ, F_HD, F_GO, F_HG = 2, 3, 4, 5
 
 # key: (font, size_pt, bold, color)
 CHARS = {
@@ -39,14 +39,19 @@ CHARS = {
     "cover2": (F_HD, 16, False, "#000000"),
     "cover3": (F_MJ, 15, True, "#000000"),
     "cover4": (F_HD, 13, False, "#1F3864"),
-    "toc1": (F_MJ, 12, True, "#000000"),
-    "toc2": (F_MJ, 12, False, "#000000"),
-    "toc3": (F_MJ, 11, False, "#000000"),
-    "boxt": (F_HD, 13, False, "#1F3864"),
-    "boxb": (F_MJ, 11.5, False, "#000000"),
+    "toc1": (F_HG, 12, True, "#000000"),
+    "toc2": (F_HG, 12, False, "#000000"),
+    "toc3": (F_HG, 11, False, "#000000"),
+    "tocH": (F_HG, 20, True, "#000000"),
+    "boxt": (F_HG, 13, True, "#1F3864"),
+    "boxb": (F_HG, 11.5, False, "#000000"),
+    "boxbb": (F_HG, 11.5, True, "#000000"),
     "small": (F_MJ, 10, False, "#000000"),
     "pgnum": (F_MJ, 10, False, "#000000"),
 }
+
+for _k, (_f, _s, _b, _c) in list(CHARS.items()):
+    CHARS["g_" + _k] = (F_HG if _f in (F_MJ, F_HD) else _f, _s, _b, _c)
 
 # key: (align, left, indent(first-line; negative=hanging), prev, next, linespacing%, keepNext, tab)
 # lengths in pt
@@ -77,8 +82,8 @@ PARAS = {
     "fig": ("CENTER", 0, 0, 6, 2, 100, 1, None),
     "ref": ("JUSTIFY", 24, -24, 0, 5, 150, 0, None),
     "cover": ("CENTER", 0, 0, 0, 0, 150, 0, None),
-    "boxp": ("JUSTIFY", 12, -12, 0, 3, 150, 0, None),
-    "boxt": ("CENTER", 0, 0, 0, 4, 150, 0, None),
+    "boxp": ("JUSTIFY", 12, -12, 2, 6, 170, 0, None),
+    "boxt": ("CENTER", 0, 0, 2, 10, 160, 0, None),
 }
 
 BF_TABLE, BF_HEAD, BF_BOX, BF_NONE, BF_SHADE, BF_TITLE = 3, 4, 5, 6, 7, 8
@@ -242,6 +247,8 @@ class Builder:
         return el
 
     def _run(self, parent, text, ck):
+        if getattr(self, "gothic", False) and ("g_" + ck) in self.cid:
+            ck = "g_" + ck
         r = etree.SubElement(parent, HP + "run", {"charPrIDRef": str(self.cid[ck])})
         t = etree.SubElement(r, HP + "t")
         parts = text.split("\t")
@@ -275,7 +282,7 @@ class Builder:
 
     # ----- tables
     def table(self, rows, widths=None, header_rows=1, aligns=None, merges=(), font="tbl",
-              row_shade=(), cell_bf=None, para_style=None, repeat=True):
+              row_shade=(), cell_bf=None, para_style=None, repeat=True, margin=(510, 141)):
         nrows = len(rows); ncols = max(len(r) for r in rows)
         if widths is None:
             widths = [1] * ncols
@@ -301,7 +308,7 @@ class Builder:
                                            "horzRelTo": "COLUMN", "vertAlign": "TOP", "horzAlign": "LEFT",
                                            "vertOffset": "0", "horzOffset": "0"})
         etree.SubElement(tbl, HP + "outMargin", {"left": "0", "right": "0", "top": "0", "bottom": "0"})
-        etree.SubElement(tbl, HP + "inMargin", {"left": "510", "right": "510", "top": "141", "bottom": "141"})
+        etree.SubElement(tbl, HP + "inMargin", {"left": str(margin[0]), "right": str(margin[0]), "top": str(margin[1]), "bottom": str(margin[1])})
         # merges: list of (r, c, rowspan, colspan)
         covered = set(); spans = {}
         for (r0, c0, rs, cs) in merges:
@@ -321,7 +328,7 @@ class Builder:
                 if cell_bf and (r, c) in cell_bf:
                     bf = cell_bf[(r, c)]
                 tc = etree.SubElement(tr, HP + "tc", {"name": "", "header": "1" if is_head else "0",
-                                                      "hasMargin": "0", "protect": "0", "editable": "0",
+                                                      "hasMargin": "1" if margin != (510, 141) else "0", "protect": "0", "editable": "0",
                                                       "dirty": "1", "borderFillIDRef": str(bf)})
                 sub = etree.SubElement(tc, HP + "subList", {
                     "id": "", "textDirection": "HORIZONTAL", "lineWrap": "BREAK", "vertAlign": "CENTER",
@@ -354,13 +361,17 @@ class Builder:
                 etree.SubElement(tc, HP + "cellSpan", {"colSpan": str(cs), "rowSpan": str(rs)})
                 w = sum(cw[c:c + cs])
                 etree.SubElement(tc, HP + "cellSz", {"width": str(w), "height": str(rowh * rs)})
-                etree.SubElement(tc, HP + "cellMargin", {"left": "510", "right": "510", "top": "141", "bottom": "141"})
+                etree.SubElement(tc, HP + "cellMargin", {"left": str(margin[0]), "right": str(margin[0]), "top": str(margin[1]), "bottom": str(margin[1])})
         self.sec.mark_dirty()
         return tbl
 
     def box(self, paras):
         """paras: list of (parastyle, runs). One-cell shaded box."""
-        return self.table([[paras]], widths=[1], header_rows=0, cell_bf={(0, 0): BF_BOX}, repeat=False)
+        old = getattr(self, "gothic", False)
+        self.gothic = True
+        t = self.table([[paras]], widths=[1], header_rows=0, cell_bf={(0, 0): BF_BOX}, repeat=False, margin=(1700, 1100))
+        self.gothic = old
+        return t
 
     # ----- pictures
     def picture(self, path, width_mm, height_mm=None):

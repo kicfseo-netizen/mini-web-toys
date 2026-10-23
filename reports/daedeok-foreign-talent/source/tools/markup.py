@@ -11,7 +11,7 @@ def inline_runs(text, base="body"):
         if not part:
             continue
         if part.startswith("**") and part.endswith("**"):
-            k = {"body": "bodyb", "boxb": "boxb", "note": "note", "tbl": "tblb"}.get(base, "bodyb")
+            k = {"body": "bodyb", "boxb": "boxbb", "note": "note", "tbl": "tblb"}.get(base, "bodyb")
             out.append((part[2:-2], k))
         elif part.startswith("【"):
             k = {"note": "notered", "tbl": "tblred"}.get(base, "redb" if base == "bodyb" else "red")
