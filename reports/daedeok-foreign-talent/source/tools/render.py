@@ -61,7 +61,7 @@ def emit(bld, blocks, kind):
         t = b["t"]
         if t == "h1":
             chapno, title = h1_runs(b["text"])
-            bld.gothic = (chapno == "제1장")
+            bld.gothic = False
             bld.page_break()
             if chapno:
                 bld.para([(chapno, "h1s")], "h1top")
